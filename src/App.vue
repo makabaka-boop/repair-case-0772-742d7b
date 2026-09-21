@@ -275,8 +275,6 @@ function runCompare() {
       <CalibrationWorkspace />
     </template>
 
-    <KeepAlive>
-      <TrainingWorkspace v-if="mode === 'training'" />
-    </KeepAlive>
+    <TrainingWorkspace v-if="mode === 'training'" />
   </main>
 </template>

@@ -147,6 +147,34 @@ test.describe('识读训练主流程', () => {
     await expect(page.getByTestId('training-all-correct')).toBeVisible();
     await expect(page.getByTestId('training-wrong-item')).toHaveCount(0);
   });
+
+  test('前九题答对、末题答错：成绩如实显示 9 对 1 错且错题区呈现末题', async ({ page }) => {
+    await page.getByTestId('mode-training').click();
+    await page.getByTestId('training-start').click();
+
+    const seenDots: string[] = [];
+    let lastCorrect = '';
+    for (let index = 1; index <= 10; index += 1) {
+      const correct = await answerCurrentQuestion(page, index === 10);
+      seenDots.push(await currentDots(page));
+      if (index === 10) {
+        lastCorrect = correct;
+      }
+      await page.getByTestId('training-next').click();
+    }
+
+    // 十张题卡互不重复
+    expect(new Set(seenDots).size).toBe(10);
+
+    await expect(page.getByTestId('training-score')).toBeVisible();
+    await expect(page.getByTestId('training-score-summary')).toContainText('共 10 题');
+    await expect(page.getByTestId('training-score-summary')).toContainText('答对 9 题');
+    await expect(page.getByTestId('training-score-summary')).toContainText('答错 1 题');
+    const wrongItems = page.getByTestId('training-wrong-item');
+    await expect(wrongItems).toHaveCount(1);
+    await expect(wrongItems.first()).toContainText('第 10 题');
+    await expect(wrongItems.first()).toContainText(`正确字符 ${lastCorrect}`);
+  });
 });
 
 test.describe('作答与开局约束', () => {
@@ -181,14 +209,30 @@ test.describe('作答与开局约束', () => {
     await expect(page.getByTestId('training-start')).toBeDisabled();
     await expect(page.getByTestId('training-hint')).toBeVisible();
 
-    // 作答一题后离开工作区：局次直接结束，再次进入时回到待开局状态
-    await answerCurrentQuestion(page);
+    // 选中选项但不提交，直接离开：返回时已选答案与题号都不得残留
+    const correct = await currentCorrectChar(page);
+    await page.locator(`[data-testid="training-option"][data-char="${correct}"]`).click();
+    await expect(page.locator('[data-testid="training-option"].picked')).toHaveCount(1);
     await page.getByTestId('mode-single').click();
     await expect(page.getByTestId('phrase-input')).toBeVisible();
 
     await page.getByTestId('mode-training').click();
     await expect(page.getByTestId('training-question')).toHaveCount(0);
     await expect(page.getByTestId('training-score')).toHaveCount(0);
+    await expect(page.getByTestId('training-start')).toBeEnabled();
+
+    // 重新开局：从第 1 题开始，且没有遗留的选中标记
+    await page.getByTestId('training-start').click();
+    await expect(page.getByTestId('training-progress')).toHaveText('第 1 / 10 题');
+    await expect(page.locator('[data-testid="training-option"].picked')).toHaveCount(0);
+
+    // 提交后停留在反馈阶段离开：再次返回仍是待开局状态
+    await answerCurrentQuestion(page);
+    await expect(page.getByTestId('training-feedback')).toBeVisible();
+    await page.getByTestId('mode-single').click();
+    await page.getByTestId('mode-training').click();
+    await expect(page.getByTestId('training-question')).toHaveCount(0);
+    await expect(page.getByTestId('training-feedback')).toHaveCount(0);
     await expect(page.getByTestId('training-start')).toBeEnabled();
   });
 

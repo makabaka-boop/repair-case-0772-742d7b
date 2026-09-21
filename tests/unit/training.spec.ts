@@ -70,6 +70,17 @@ describe('题目生成：种子确定性', () => {
     }
   });
 
+  it('任意整数种子生成的十张题卡都互不重复（不出现相同点号）', () => {
+    for (let seed = 0; seed < 500; seed += 1) {
+      const result = generateSession(seed);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const cells = result.session.questions.map((question) => question.cell);
+        expect(new Set(cells).size).toBe(SESSION_LENGTH);
+      }
+    }
+  });
+
   it('每题四个互不重复的选项且恰好包含一个正确字符', () => {
     const result = generateSession(9);
     expect(result.ok).toBe(true);
@@ -174,6 +185,30 @@ describe('训练服务：局次流程与计分', () => {
     expect(score.wrong[0].question.index).toBe(0);
     expect(score.wrong[0].picked.character).toBe(wrongOption.character);
     expect(score.wrong[0].question.answer.character).toBe(first.answer.character);
+  });
+
+  it('前九题答对、末题答错时成绩如实显示 9 对 1 错并列出末题', () => {
+    const service = createTrainingService();
+    service.start(7);
+
+    for (let index = 0; index < SESSION_LENGTH - 1; index += 1) {
+      const question = service.getSnapshot().currentQuestion!;
+      expect(service.submit(question.answer.character).ok).toBe(true);
+      service.next();
+    }
+
+    // 最后一题故意答错
+    const last = service.getSnapshot().currentQuestion!;
+    const wrongOption = last.options.find((option) => option.character !== last.answer.character)!;
+    expect(service.submit(wrongOption.character).ok).toBe(true);
+    service.next();
+
+    const score = service.getSnapshot().score!;
+    expect(score.total).toBe(SESSION_LENGTH);
+    expect(score.correct).toBe(SESSION_LENGTH - 1);
+    expect(score.wrong).toHaveLength(1);
+    expect(score.wrong[0].question.index).toBe(SESSION_LENGTH - 1);
+    expect(score.wrong[0].picked.character).toBe(wrongOption.character);
   });
 
   it('每题只允许提交一次，重复提交被拦截且不计分', () => {

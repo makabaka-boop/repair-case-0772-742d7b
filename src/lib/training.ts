@@ -161,10 +161,8 @@ export function generateSession(
   }
 
   const rand = mulberry32(seed);
-  const answers = Array.from(
-    { length: SESSION_LENGTH },
-    () => candidates[Math.floor(rand() * candidates.length)]
-  );
+  // 十题答案从题库中一次性不放回抽取，保证一局十题互不重复。
+  const answers = shuffle(candidates, rand).slice(0, SESSION_LENGTH);
 
   const questions: TrainingQuestion[] = answers.map((answer, index) => {
     const distractorPool = candidates.filter((entry) => entry.character !== answer.character);
@@ -321,13 +319,12 @@ export function createTrainingService(): TrainingService {
   function getSnapshot(): TrainingSnapshot {
     const activeQuestion =
       session && (phase === 'answering' || phase === 'reviewing') ? session.questions[currentIndex] : null;
-    const completedRecords = records.slice(0, currentIndex);
     const score: TrainingScore | null =
       session && phase === 'finished'
         ? {
             total: session.questions.length,
-            correct: completedRecords.filter((record) => record.correct).length,
-            wrong: completedRecords.filter((record) => !record.correct)
+            correct: records.filter((record) => record.correct).length,
+            wrong: records.filter((record) => !record.correct)
           }
         : null;
     return {

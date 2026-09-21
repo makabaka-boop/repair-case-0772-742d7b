@@ -275,8 +275,8 @@ function runCompare() {
       <CalibrationWorkspace />
     </template>
 
-    <KeepAlive>
-      <TrainingWorkspace v-if="mode === 'training'" />
-    </KeepAlive>
+    <!-- 不使用 KeepAlive：离开识读训练时组件卸载，onUnmounted 调 abort 结束未完成局次，
+         再进入时为全新空闲工作区（局次不做本地保存）。 -->
+    <TrainingWorkspace v-if="mode === 'training'" />
   </main>
 </template>

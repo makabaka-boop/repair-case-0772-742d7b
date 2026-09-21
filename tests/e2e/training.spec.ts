@@ -192,6 +192,52 @@ test.describe('作答与开局约束', () => {
     await expect(page.getByTestId('training-start')).toBeEnabled();
   });
 
+  test('作答中（未提交）切走再返回，旧题号与已选答案不残留，可重新开局', async ({ page }) => {
+    await page.getByTestId('mode-training').click();
+    await page.getByTestId('training-start').click();
+    await expect(page.getByTestId('training-question')).toBeVisible();
+    await expect(page.getByTestId('training-progress')).toHaveText('第 1 / 10 题');
+
+    // 仅选中一个选项、尚未提交，处于 answering 阶段
+    const correct = await currentCorrectChar(page);
+    await page.locator(`[data-testid="training-option"][data-char="${correct}"]`).click();
+    await expect(page.locator('.training-option.picked')).toHaveCount(1);
+
+    // 切到单稿预检再返回：旧局次直接结束，回到待开局状态
+    await page.getByTestId('mode-single').click();
+    await expect(page.getByTestId('phrase-input')).toBeVisible();
+    await page.getByTestId('mode-training').click();
+    await expect(page.getByTestId('training-question')).toHaveCount(0);
+    await expect(page.getByTestId('training-feedback')).toHaveCount(0);
+    await expect(page.getByTestId('training-score')).toHaveCount(0);
+    await expect(page.getByTestId('training-hint')).toHaveCount(0);
+    await expect(page.getByTestId('training-start')).toBeEnabled();
+    await expect(page.locator('.training-option.picked')).toHaveCount(0);
+
+    // 新局可以正常开始
+    await page.getByTestId('training-start').click();
+    await expect(page.getByTestId('training-question')).toBeVisible();
+    await expect(page.getByTestId('training-progress')).toHaveText('第 1 / 10 题');
+  });
+
+  test('提交后停留在反馈阶段切走再返回，点号反馈不残留且可重新开局', async ({ page }) => {
+    await page.getByTestId('mode-training').click();
+    await page.getByTestId('training-start').click();
+    await answerCurrentQuestion(page);
+    await expect(page.getByTestId('training-feedback')).toBeVisible();
+
+    // 处于 reviewing 阶段切走，再返回：反馈区与禁用的开始按钮均不残留
+    await page.getByTestId('mode-single').click();
+    await page.getByTestId('mode-training').click();
+    await expect(page.getByTestId('training-question')).toHaveCount(0);
+    await expect(page.getByTestId('training-feedback')).toHaveCount(0);
+    await expect(page.getByTestId('training-start')).toBeEnabled();
+
+    await page.getByTestId('training-start').click();
+    await expect(page.getByTestId('training-progress')).toHaveText('第 1 / 10 题');
+    await expect(page.getByTestId('training-feedback')).toHaveCount(0);
+  });
+
   test('训练局次不做本地保存', async ({ page }) => {
     await page.getByTestId('mode-training').click();
     await page.getByTestId('training-start').click();

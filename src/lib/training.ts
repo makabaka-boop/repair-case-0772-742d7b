@@ -161,10 +161,9 @@ export function generateSession(
   }
 
   const rand = mulberry32(seed);
-  const answers = Array.from(
-    { length: SESSION_LENGTH },
-    () => candidates[Math.floor(rand() * candidates.length)]
-  );
+  // 一局十题互不重复：先对题库整体洗牌，再按序取前 SESSION_LENGTH 个答案
+  // （不放回抽样），保证十张题卡的点号方与正确字符两两不同。
+  const answers = shuffle(candidates, rand).slice(0, SESSION_LENGTH);
 
   const questions: TrainingQuestion[] = answers.map((answer, index) => {
     const distractorPool = candidates.filter((entry) => entry.character !== answer.character);
@@ -321,13 +320,15 @@ export function createTrainingService(): TrainingService {
   function getSnapshot(): TrainingSnapshot {
     const activeQuestion =
       session && (phase === 'answering' || phase === 'reviewing') ? session.questions[currentIndex] : null;
-    const completedRecords = records.slice(0, currentIndex);
+    // finished 时十题记录均已在 records 中（最后一题提交后记录即入列），
+    // 直接按全部记录计分，避免漏掉末题造成答对/答错数失真。
+    const scoreRecords = phase === 'finished' ? records.slice() : records.slice(0, currentIndex);
     const score: TrainingScore | null =
       session && phase === 'finished'
         ? {
             total: session.questions.length,
-            correct: completedRecords.filter((record) => record.correct).length,
-            wrong: completedRecords.filter((record) => !record.correct)
+            correct: scoreRecords.filter((record) => record.correct).length,
+            wrong: scoreRecords.filter((record) => !record.correct)
           }
         : null;
     return {

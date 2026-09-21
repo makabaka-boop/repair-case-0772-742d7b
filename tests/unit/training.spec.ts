@@ -70,6 +70,27 @@ describe('题目生成：种子确定性', () => {
     }
   });
 
+  it('受影响种子（不放回抽样回归）：广泛扫种子，每局十张题卡仍两两不同', () => {
+    // 旧实现按“有放回抽样”取答案，绝大多数种子都会出现重复点号方；
+    // 回归后逐种子断言十题唯一，覆盖线上随机时间戳可能命中的种子。
+    for (let seed = 1; seed <= 200; seed += 1) {
+      const result = generateSession(seed);
+      expect(result.ok, `种子 ${seed} 应能正常开局`).toBe(true);
+      if (!result.ok) {
+        continue;
+      }
+      const { questions } = result.session;
+      expect(questions).toHaveLength(SESSION_LENGTH);
+      expect(new Set(questions.map((question) => question.cell)).size, `种子 ${seed} 点号方重复`).toBe(
+        SESSION_LENGTH
+      );
+      expect(
+        new Set(questions.map((question) => question.answer.character)).size,
+        `种子 ${seed} 正确字符重复`
+      ).toBe(SESSION_LENGTH);
+    }
+  });
+
   it('每题四个互不重复的选项且恰好包含一个正确字符', () => {
     const result = generateSession(9);
     expect(result.ok).toBe(true);
@@ -174,6 +195,39 @@ describe('训练服务：局次流程与计分', () => {
     expect(score.wrong[0].question.index).toBe(0);
     expect(score.wrong[0].picked.character).toBe(wrongOption.character);
     expect(score.wrong[0].question.answer.character).toBe(first.answer.character);
+  });
+
+  it('末题答错时成绩仍计入末题：答对九题、答错一题且错题区含第十题', () => {
+    const service = createTrainingService();
+    service.start(7);
+
+    // 前九题全部答对
+    for (let index = 0; index < SESSION_LENGTH - 1; index += 1) {
+      const question = service.getSnapshot().currentQuestion!;
+      const submitted = service.submit(question.answer.character);
+      expect(submitted.ok).toBe(true);
+      service.next();
+    }
+
+    // 第十题（最后一题）故意答错
+    const last = service.getSnapshot().currentQuestion!;
+    expect(last.index).toBe(SESSION_LENGTH - 1);
+    const wrongOption = last.options.find((option) => option.character !== last.answer.character)!;
+    const wrongSubmit = service.submit(wrongOption.character);
+    expect(wrongSubmit.ok).toBe(true);
+    expect(service.getSnapshot().phase).toBe('reviewing');
+    service.next();
+
+    // 成绩与真实作答一致：共十题、答对九题、答错一题，错题即第十题
+    const score = service.getSnapshot().score!;
+    expect(service.getSnapshot().phase).toBe('finished');
+    expect(score.total).toBe(SESSION_LENGTH);
+    expect(score.correct).toBe(SESSION_LENGTH - 1);
+    expect(score.wrong).toHaveLength(1);
+    expect(score.wrong[0].question.index).toBe(SESSION_LENGTH - 1);
+    expect(score.wrong[0].correct).toBe(false);
+    expect(score.wrong[0].question.answer.character).toBe(last.answer.character);
+    expect(score.wrong[0].picked.character).toBe(wrongOption.character);
   });
 
   it('每题只允许提交一次，重复提交被拦截且不计分', () => {
